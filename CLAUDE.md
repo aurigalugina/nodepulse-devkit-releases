@@ -95,6 +95,20 @@ with `fatal: 'nodepulse' does not appear to be a git repository` (fixed
 scaffold and was only caught during manual end-user testing, not during
 implementation).
 
+**Auth header must be applied via `git clone -c http.extraHeader=...`, not
+a `git config` call after cloning.** The original implementation ran plain
+`git clone <url> <path>` first, then set the auth header afterward — but
+`git clone` itself immediately makes an authenticated request to the
+remote, so without a header present at THAT point, git falls back to its
+normal interactive credential prompt (Git Credential Manager on Windows),
+finds no matching stored credential, and fails with a generic
+"Authentication failed" error that gives no hint the real problem is a
+missing Bearer token. Fixed 2026-09-09, v0.1.3, by passing `-c
+http.extraHeader=<value>` directly to the `clone` subcommand (config values
+passed via `-c` apply for that command's own duration); the header is then
+also persisted permanently via a normal `git config` call afterward so
+VSCodium's Push/Pull/Fetch keep working post-clone.
+
 This means conflict detection (non-fast-forward push rejection), delta
 transfer, history, and rollback (`git revert`/`git reset`) are all git's
 own native behavior — devkit does not reimplement any of this. Devkit's own

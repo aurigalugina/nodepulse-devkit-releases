@@ -55,7 +55,24 @@ pub async fn git_clone(
 ) -> Result<(), String> {
     let remote_url = build_remote_url(&host, &node_id, &folder);
 
-    run_git(&["clone", &remote_url, &local_path], None)?;
+    // The auth header MUST be present during the clone itself, not set
+    // afterward — `git clone` immediately makes an authenticated request to
+    // the remote, and without a header at that point git falls back to its
+    // normal interactive credential flow (on Windows: Git Credential
+    // Manager), which has no matching stored credential and fails with a
+    // generic "Authentication failed" error that gives no hint the actual
+    // issue is a missing Bearer token, not a wrong username/password.
+    // `git clone -c <key>=<value>` applies config values for the duration
+    // of the clone command itself (unlike a bare `git config` afterward,
+    // which only affects commands run after the clone already finished).
+    let auth_scheme = "Authorization:";
+    let bearer_kind = "Bearer";
+    let auth_header = format!("{auth_scheme} {bearer_kind} {jwt_token}");
+    let http_extra_header_config = format!("http.extraHeader={auth_header}");
+    run_git(
+        &["clone", "-c", &http_extra_header_config, &remote_url, &local_path],
+        None,
+    )?;
 
     // `git clone <url> <path>` always names the remote "origin" — rename it
     // to "nodepulse" so it matches what git_commit_and_push/git_pull (and
@@ -65,8 +82,10 @@ pub async fn git_clone(
     // because that remote name never existed.
     run_git(&["remote", "rename", "origin", "nodepulse"], Some(&local_path))?;
 
-    let bearer_prefix = "Authorization: Bearer ";
-    let auth_header = format!("{bearer_prefix}{jwt_token}");
+    // Persist the auth header as a permanent (not clone-scoped) config value
+    // so VSCodium's own Push/Pull/Fetch buttons keep working after this
+    // command returns — the -c flag above only applied for the clone
+    // command's own duration, it does not persist to .git/config on its own.
     run_git(&["config", "http.extraHeader", &auth_header], Some(&local_path))?;
     run_git(&["config", "user.name", &display_name], Some(&local_path))?;
     run_git(&["config", "user.email", &email], Some(&local_path))?;

@@ -120,6 +120,22 @@ already running may spawn a new app instance instead of routing to the
 existing one. Flagged for a later pass if it proves to be a real annoyance
 in practice.
 
+**Important implementation detail (fixed 2026-09-09, v0.1.1):** deep-link
+handling MUST happen via the plugin's frontend JS API
+(`getCurrent()`/`onOpenUrl()` from `@tauri-apps/plugin-deep-link`), not via
+a custom Rust-side event emitted from `.setup()`. The original
+implementation emitted a `deep-link` event from `.setup()` before any
+frontend `listen()` call could possibly be registered yet — the cold-start
+launch URL (the ONLY case that matters on Windows/Linux, see below) was
+silently dropped every time, and the app would land on the plain "Signed
+in as..." screen with no folder ever opened. `getCurrent()` in `onMount`
+fixes this by asking Rust what the launch URL was, on-demand, instead of
+racing a one-shot event. Per the plugin's own docs, `onOpenUrl` (warm-app
+case) is unsupported on Windows/Linux without the single-instance plugin —
+the OS spawns a brand-new process per click there instead of reusing the
+running one — which makes `getCurrent()` the primary mechanism on those
+platforms, not a fallback.
+
 ## Storage Location: user-chosen per folder
 
 No default project directory. Every time a folder is opened, devkit shows

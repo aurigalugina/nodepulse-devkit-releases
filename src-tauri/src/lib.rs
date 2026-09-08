@@ -4,8 +4,6 @@ use commands::git::{git_clone, git_commit_and_push, git_pull, git_status_porcela
 use commands::nodepulse::login;
 use commands::storage::{clear_auth_token, read_config, write_config};
 use commands::vscodium::launch_vscodium;
-use tauri::Emitter;
-use tauri_plugin_deep_link::DeepLinkExt;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -16,23 +14,13 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
-        .setup(|app| {
-            // Register the nodepulse-ide:// scheme handler and forward any
-            // deep-link URL (both the one that launched the app cold, and
-            // any received while already running) to the frontend as a
-            // "deep-link" event — App.svelte listens for this and parses
-            // node/path/host query params to drive the open-folder flow.
-            // See document/decision-log/2026-09-08-nodepulse-ide-git-bare-repo-transport.md
-            // for why a custom URI scheme is the browser-to-desktop-app
-            // handoff mechanism.
-            let handle = app.handle().clone();
-            app.deep_link().on_open_url(move |event| {
-                for url in event.urls() {
-                    let _ = handle.emit("deep-link", url.to_string());
-                }
-            });
-            Ok(())
-        })
+        // NOTE: deep-link handling is done entirely on the frontend (App.svelte)
+        // via the plugin's own JS API (getCurrent() for the cold-start launch
+        // URL + onOpenUrl() for URLs received while already running) — NOT via
+        // a custom Rust event emitted from .setup(), which raced the frontend's
+        // listener registration and silently dropped the cold-start URL (the
+        // app would launch, sign in, but never see the folder/node to open).
+        // See document/decision-log/2026-09-08-nodepulse-ide-git-bare-repo-transport.md.
         .invoke_handler(tauri::generate_handler![
             // Storage
             read_config,

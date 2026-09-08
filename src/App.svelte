@@ -1,6 +1,6 @@
 <script>
   import { onMount } from 'svelte';
-  import { listen } from '@tauri-apps/api/event';
+  import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
   import { authStore } from './lib/stores/authStore.svelte.js';
   import Login from './lib/components/Login.svelte';
   import OpenFolder from './lib/components/OpenFolder.svelte';
@@ -46,9 +46,26 @@
     await authStore.load();
     ready = true;
 
-    // Deep link that launched the app cold, or was clicked while running —
-    // the Rust side (lib.rs) forwards both cases as this one event.
-    await listen('deep-link', (event) => handleDeepLink(event.payload));
+    // Cold-start case: the OS launched devkit BECAUSE of this deep link —
+    // getCurrent() asks the Rust side (which registered the URL before the
+    // frontend even existed) what that launch URL was. This is the fix for
+    // the bug where clicking "Open in NodePulse-IDE" while devkit wasn't
+    // already running would open the app but land on the plain "Signed in
+    // as ..." screen — the previous implementation relied on a Rust-side
+    // event emitted from .setup() (before any frontend listener could
+    // possibly be registered yet), so the cold-start URL was silently lost.
+    try {
+      const urls = await getCurrent();
+      if (urls && urls.length > 0) handleDeepLink(urls[0]);
+    } catch (e) {
+      console.warn('getCurrent() deep-link check failed:', e);
+    }
+
+    // Warm case: devkit is already running and receives another deep link
+    // (e.g. user clicks "Open in NodePulse-IDE" again for a different folder).
+    await onOpenUrl((urls) => {
+      if (urls && urls.length > 0) handleDeepLink(urls[0]);
+    });
   });
 
   function onLoggedIn() {

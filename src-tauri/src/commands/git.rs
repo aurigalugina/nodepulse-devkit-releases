@@ -57,7 +57,16 @@ pub async fn git_clone(
 
     run_git(&["clone", &remote_url, &local_path], None)?;
 
-    let auth_header = format!("Authorization: Bearer {jwt_token}");
+    // `git clone <url> <path>` always names the remote "origin" — rename it
+    // to "nodepulse" so it matches what git_commit_and_push/git_pull (and
+    // VSCodium's Source Control panel, which shows whatever remotes exist)
+    // actually use. Without this rename, every push/pull from devkit failed
+    // with "fatal: 'nodepulse' does not appear to be a git repository"
+    // because that remote name never existed.
+    run_git(&["remote", "rename", "origin", "nodepulse"], Some(&local_path))?;
+
+    let bearer_prefix = "Authorization: Bearer ";
+    let auth_header = format!("{bearer_prefix}{jwt_token}");
     run_git(&["config", "http.extraHeader", &auth_header], Some(&local_path))?;
     run_git(&["config", "user.name", &display_name], Some(&local_path))?;
     run_git(&["config", "user.email", &email], Some(&local_path))?;

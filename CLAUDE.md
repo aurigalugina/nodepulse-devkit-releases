@@ -85,6 +85,16 @@ endpoint, which forwards the raw git Smart HTTP protocol to the Runner over
 a gRPC session; the Runner executes git's own `git-http-backend` binary
 on-demand (never a daemon, never an open port on the node).
 
+**The remote is named `nodepulse`, not the git-clone default `origin`.**
+`git_clone` (in `git.rs`) explicitly runs `git remote rename origin
+nodepulse` right after cloning — `git_commit_and_push`/`git_pull` (and
+VSCodium's own Source Control panel push/pull buttons) both target the
+`nodepulse` remote by name, so without this rename every push/pull failed
+with `fatal: 'nodepulse' does not appear to be a git repository` (fixed
+2026-09-09, v0.1.2 — the remote name mismatch existed since the initial
+scaffold and was only caught during manual end-user testing, not during
+implementation).
+
 This means conflict detection (non-fast-forward push rejection), delta
 transfer, history, and rollback (`git revert`/`git reset`) are all git's
 own native behavior — devkit does not reimplement any of this. Devkit's own

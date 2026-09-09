@@ -1,8 +1,9 @@
 <script>
   import { invoke } from '@tauri-apps/api/core';
   import { Upload, Download, FolderCode, Loader } from 'lucide-svelte';
+  import ErrorPanel from './ErrorPanel.svelte';
 
-  /** @type {{ localPath: string, folder: string, nodeId: string }} */
+  /** @type {{ localPath: string, folder: string, nodeId: string, launchError?: string }} */
   let { project, vscodiumPath } = $props();
 
   let statusLines = $state([]); // parsed porcelain lines, [{status, file}]
@@ -12,6 +13,18 @@
   let pulling = $state(false);
   let resultMessage = $state('');
   let resultIsError = $state(false);
+  let resultStep = $state(''); // which action ('push' | 'pull' | 'launch') produced resultMessage — feeds ErrorPanel's context
+
+  // Surface a non-fatal VSCodium launch failure from OpenFolder immediately —
+  // the clone still succeeded, so the user lands here rather than an error
+  // screen, but the failure shouldn't be silently dropped either.
+  $effect(() => {
+    if (project.launchError) {
+      resultMessage = project.launchError;
+      resultIsError = true;
+      resultStep = 'launch_vscodium';
+    }
+  });
 
   function parsePorcelain(raw) {
     return raw
@@ -54,6 +67,7 @@
       // rather than any custom conflict handling.
       resultMessage = typeof e === 'string' ? e : 'Push failed.';
       resultIsError = true;
+      resultStep = 'git_commit_and_push';
     } finally {
       pushing = false;
     }
@@ -68,6 +82,7 @@
     } catch (e) {
       resultMessage = typeof e === 'string' ? e : 'Pull failed.';
       resultIsError = true;
+      resultStep = 'git_pull';
     } finally {
       pulling = false;
     }
@@ -79,6 +94,7 @@
     } catch (e) {
       resultMessage = typeof e === 'string' ? e : 'Could not launch VSCodium.';
       resultIsError = true;
+      resultStep = 'launch_vscodium';
     }
   }
 </script>
@@ -118,14 +134,24 @@
   </div>
 
   {#if resultMessage}
-    <div class="text-xs p-3 rounded-lg {resultIsError ? 'bg-np-red-dim text-np-red' : 'bg-np-green-dim text-np-green'}">
-      <p class="whitespace-pre-wrap font-mono">{resultMessage}</p>
-      {#if resultIsError}
-        <button class="np-btn-ghost mt-2 text-xs" onclick={pullLatest} disabled={pulling}>
-          Pull latest &amp; retry
-        </button>
-      {/if}
-    </div>
+    {#if resultIsError}
+      <ErrorPanel
+        title="Action failed"
+        message={resultMessage}
+        context={{
+          Step: resultStep,
+          Project: project.localPath,
+          Node: project.nodeId
+        }}
+      />
+      <button class="np-btn-ghost mt-2 text-xs self-start" onclick={pullLatest} disabled={pulling}>
+        Pull latest &amp; retry
+      </button>
+    {:else}
+      <div class="text-xs p-3 rounded-lg bg-np-green-dim text-np-green">
+        <p class="whitespace-pre-wrap font-mono">{resultMessage}</p>
+      </div>
+    {/if}
   {/if}
 </div>
 

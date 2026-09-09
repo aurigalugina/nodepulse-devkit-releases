@@ -20,6 +20,21 @@ fn build_remote_url(host: &str, node_id: &str, folder: &str) -> String {
 
 fn run_git(args: &[&str], cwd: Option<&str>) -> Result<String, String> {
     let mut cmd = Command::new("git");
+
+    // Bypass git's "dubious ownership" safety check for this specific
+    // directory. This check exists to stop a local user from being
+    // tricked into running git commands inside a repo owned by another
+    // (possibly malicious) local account — irrelevant here, since the
+    // "different owner" git detects is just an artifact of accessing a
+    // WSL-mounted path via Windows' \\wsl.localhost\... UNC prefix (or
+    // any other cross-filesystem-boundary access), not an actual
+    // untrusted repo. Passed as `-c` (command-scoped) rather than
+    // `--global`, so it only whitelists the exact directory being
+    // operated on, not every git repo on the machine.
+    if let Some(dir) = cwd {
+        cmd.args(["-c", &format!("safe.directory={dir}")]);
+    }
+
     cmd.args(args);
     if let Some(dir) = cwd {
         cmd.current_dir(dir);

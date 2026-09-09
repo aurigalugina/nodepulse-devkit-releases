@@ -2,11 +2,13 @@
   import { onMount } from 'svelte';
   import { getCurrent, onOpenUrl } from '@tauri-apps/plugin-deep-link';
   import { authStore } from './lib/stores/authStore.svelte.js';
+  import StartupCheck from './lib/components/StartupCheck.svelte';
   import Login from './lib/components/Login.svelte';
   import OpenFolder from './lib/components/OpenFolder.svelte';
   import ProjectView from './lib/components/ProjectView.svelte';
 
   let ready = $state(false);
+  let startupDone = $state(false); // gates the UI behind the update-check screen, same pattern as nodepulse-connect
   let pendingOpen = $state(null); // { nodeId, path } parsed from a deep-link, queued until login completes
   let opened = $state(null); // { localPath, folder, nodeId } once OpenFolder finishes — Task 9 builds the real project view here
 
@@ -82,6 +84,8 @@
 <main class="h-full">
   {#if !ready}
     <div class="h-full flex items-center justify-center text-np-muted text-sm">Loading…</div>
+  {:else if !startupDone}
+    <StartupCheck onDone={() => (startupDone = true)} />
   {:else if !authStore.isAuthenticated}
     <Login onLoggedIn={onLoggedIn} />
   {:else if pendingOpen}

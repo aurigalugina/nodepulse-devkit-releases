@@ -14,6 +14,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         // NOTE: deep-link handling is done entirely on the frontend (App.svelte)
         // via the plugin's own JS API (getCurrent() for the cold-start launch
         // URL + onOpenUrl() for URLs received while already running) — NOT via

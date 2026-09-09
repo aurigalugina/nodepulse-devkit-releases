@@ -120,7 +120,37 @@ Tahap 3a pull-only deploy-key flow in `backend-core-node`) and a
 `nodepulse` remote (this app) — they're entirely independent; devkit only
 ever touches `nodepulse`.
 
-## VSCodium Launch
+## Startup Update Check + Copyable Error Reports (v0.1.4)
+
+Two UX additions requested after the user hit repeated real-world bugs
+during manual verification and had to keep re-checking Settings for
+updates / re-typing error text by hand when reporting back:
+
+- **`StartupCheck.svelte`** gates the login/deep-link UI behind a blocking
+  update-check screen (same pattern `nodepulse-connect` already uses) —
+  checks on every launch via `@tauri-apps/plugin-updater`, shows an
+  "Update Now" button that downloads+installs+relaunches. No separate
+  Settings page needed to catch a new release anymore.
+- **`ErrorPanel.svelte`** is the one place every failure surface renders
+  through — clone/launch failures in `OpenFolder.svelte`, push/pull/launch
+  failures in `ProjectView.svelte`. Its "Copy" button builds one
+  self-contained plain-text report (which step failed, node id, folder,
+  raw git/OS error text) via `@tauri-apps/plugin-clipboard-manager`, so a
+  bug report is one click instead of manually re-typing what scrolled by
+  in a terminal window.
+
+## `-c safe.directory=<cwd>` on every git command (fixed 2026-09-09, v0.1.4)
+
+WSL folders accessed through Windows' `\\wsl.localhost\<distro>\...` UNC
+path get flagged by git's "dubious ownership" safety check (designed to
+stop a local user being tricked into operating on a repo owned by another,
+possibly malicious, local account) — `git clone`/`status`/`push`/`pull`
+all failed with `fatal: detected dubious ownership in repository at
+'...'` the moment the working copy lived on a WSL-mounted path. `run_git()`
+now always passes `-c safe.directory=<cwd>` (command-scoped, not
+`--global`) so only the exact directory being operated on is whitelisted.
+
+
 
 Devkit is a bridge, not an IDE — it shells out to the user's existing
 VSCodium/VSCode install (`codium` on PATH by default, falls back to a
@@ -172,16 +202,18 @@ handled as an ordinary filesystem path with no special WSL code.
 
 | File | Purpose |
 |---|---|
-| `src/App.svelte` | Root — startup gate, deep-link event listener, auth/pending-open/opened state routing |
+| `src/App.svelte` | Root — startup-update gate, deep-link event listener, auth/pending-open/opened state routing |
+| `src/lib/components/StartupCheck.svelte` | Blocking update-check screen shown before login/deep-link handling (same pattern as `nodepulse-connect`'s `StartupCheck.svelte`) — "Update Now" downloads+installs+relaunches via `@tauri-apps/plugin-updater` |
+| `src/lib/components/ErrorPanel.svelte` | Shared error display — title + contextual key/value pairs (step, node, folder) + raw error text + "Copy" button that builds one self-contained plain-text report via `@tauri-apps/plugin-clipboard-manager`. Used by `OpenFolder.svelte` (clone/launch failures) and `ProjectView.svelte` (push/pull/launch failures) so every failure surface in the app is copy-pasteable for bug reports |
 | `src/lib/stores/authStore.svelte.js` | Config persist (url, username, token, token_expires_at, vscodium_path) — mirrors `nodepulse-connect`'s `authStore.svelte.js` pattern, adds `isAuthenticated` expiry check since devkit has no refresh flow |
 | `src/lib/components/Login.svelte` | Host/username/password form → `login` Tauri command |
 | `src/lib/components/OpenFolder.svelte` | Drives the picker → clone → launch-VSCodium sequence once a deep-link is queued |
 | `src/lib/components/ProjectView.svelte` | Post-clone screen — "Open in VSCodium" (primary), "Push to Server" / "Pull Latest" (secondary, beginner-friendly path with change preview + non-fast-forward conflict recovery) |
 | `src-tauri/src/commands/storage.rs` | `read_config`/`write_config`/`clear_auth_token` — config persisted to `%APPDATA%/NodePulse IDE/config.json` (Windows) or `~/.config/nodepulse-ide/config.json` (macOS/Linux) |
 | `src-tauri/src/commands/nodepulse.rs` | `login` — calls the devkit-specific 90-day JWT endpoint |
-| `src-tauri/src/commands/git.rs` | `git_clone`, `git_status_porcelain`, `git_commit_and_push`, `git_pull` — all shell out to the real `git` CLI, no custom protocol logic |
+| `src-tauri/src/commands/git.rs` | `git_clone`, `git_status_porcelain`, `git_commit_and_push`, `git_pull` — all shell out to the real `git` CLI, no custom protocol logic. `run_git()` always passes `-c safe.directory=<cwd>` (see "Git Sync Mechanism" below) |
 | `src-tauri/src/commands/vscodium.rs` | `launch_vscodium` — shells out to `codium` (or configured path) |
-| `src-tauri/src/lib.rs` | Plugin registration, deep-link `on_open_url` handler forwarding to frontend as a `deep-link` event |
+| `src-tauri/src/lib.rs` | Plugin registration (updater, process, deep-link, clipboard-manager), deep-link `on_open_url` handler forwarding to frontend as a `deep-link` event |
 | `src-tauri/tauri.conf.json` | identifier `id.ussi.nodepulse-devkit`, updater endpoint (`nodepulse-devkit-releases`), deep-link scheme (`nodepulse-ide`), resizable 640×520 window (not connect's fixed compact window — devkit needs to show file lists/previews) |
 | `.github/workflows/build.yml` | CI — same pipeline shape as `nodepulse-connect`'s, minus all Tailscale bundling steps |
 

@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process::Command;
 
 /// Builds the git remote URL devkit clones/pushes/pulls against — points at
@@ -68,6 +69,30 @@ pub async fn git_clone(
     display_name: String,
     email: String,
 ) -> Result<(), String> {
+    // Give a clear, specific error up front rather than letting `git
+    // clone` fail with its own generic
+    // "destination path '...' already exists and is not an empty
+    // directory" message — this is a real, expected scenario (re-opening
+    // the same NodePulse folder a second time, into the same local
+    // location) rather than a bug, so it deserves an explanation of what
+    // to do about it (delete/choose a different local folder) instead of
+    // a raw git error.
+    let dest = Path::new(&local_path);
+    if dest.exists() {
+        let has_entries = std::fs::read_dir(dest)
+            .map(|mut entries| entries.next().is_some())
+            .unwrap_or(true); // if we can't even read it, treat as non-empty to be safe
+        if has_entries {
+            return Err(format!(
+                "'{local_path}' already exists and isn't empty — likely a previous \
+                 clone of this same project. Delete that folder first (or pick a \
+                 different location), then try opening it again. If you already have \
+                 a working copy there, open it directly in VSCodium instead of \
+                 re-cloning."
+            ));
+        }
+    }
+
     let remote_url = build_remote_url(&host, &node_id, &folder);
 
     // The auth header MUST be present during the clone itself, not set

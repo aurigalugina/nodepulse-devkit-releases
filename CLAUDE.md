@@ -208,7 +208,27 @@ an explicit override to `launch_vscodium` on every subsequent launch.
 Leaving it empty falls back to `codium` on PATH (the default, works for
 most installs).
 
-## Storage Location: user-chosen per folder
+## Reopening the Same Folder (v0.1.6)
+
+Every "Open in NodePulse-IDE" click always shows the folder-picker and
+attempts a fresh `git_clone` — devkit does not remember a folder's
+previous local clone location and silently reuse it. This is a deliberate
+scope decision (found ambiguous enough during manual testing to be worth
+asking the user directly rather than guessing): the user explicitly did
+NOT want auto-pull-into-existing-location behavior, preferring an
+explicit, unambiguous error if they pick a location that already has
+content, so they can decide themselves (delete the old clone, or open it
+directly in VSCodium without re-cloning).
+
+`git_clone` now checks the destination folder before invoking `git
+clone` at all, and returns a clear explanatory error — "already exists
+and isn't empty — likely a previous clone of this same project..." —
+instead of letting git's own generic "destination path already exists
+and is not an empty directory" surface via ErrorPanel. No actual dedup/
+"remember last location" logic was added; this is purely a clearer error
+message for an expected scenario, not new reopen behavior.
+
+
 
 No default project directory. Every time a folder is opened, devkit shows
 a native OS folder-picker dialog (`@tauri-apps/plugin-dialog`'s `open()`

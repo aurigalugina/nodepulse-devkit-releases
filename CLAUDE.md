@@ -190,6 +190,24 @@ the OS spawns a brand-new process per click there instead of reusing the
 running one — which makes `getCurrent()` the primary mechanism on those
 platforms, not a fallback.
 
+## Settings: Set VSCodium Executable Path (v0.1.5)
+
+If VSCodium was installed without adding it to PATH (a common outcome —
+several installer/download methods don't do this by default),
+`launch_vscodium` fails with "program not found" and previously had no
+recovery path other than manually editing PATH or the config file by
+hand — the error message itself said "set its executable location in
+Settings" but no Settings UI existed yet.
+
+`Settings.svelte` (accessible via a gear icon on the idle/signed-in screen,
+and directly from the "Set VSCodium path in Settings" button that appears
+on a `launch_vscodium` failure in `ProjectView.svelte`) lets the user type
+or browse to VSCodium's executable, persisted to
+`authStore.vscodiumPath` → `vscodium_path` in config.json, and passed as
+an explicit override to `launch_vscodium` on every subsequent launch.
+Leaving it empty falls back to `codium` on PATH (the default, works for
+most installs).
+
 ## Storage Location: user-chosen per folder
 
 No default project directory. Every time a folder is opened, devkit shows
@@ -205,6 +223,7 @@ handled as an ordinary filesystem path with no special WSL code.
 | `src/App.svelte` | Root — startup-update gate, deep-link event listener, auth/pending-open/opened state routing |
 | `src/lib/components/StartupCheck.svelte` | Blocking update-check screen shown before login/deep-link handling (same pattern as `nodepulse-connect`'s `StartupCheck.svelte`) — "Update Now" downloads+installs+relaunches via `@tauri-apps/plugin-updater` |
 | `src/lib/components/ErrorPanel.svelte` | Shared error display — title + contextual key/value pairs (step, node, folder) + raw error text + "Copy" button that builds one self-contained plain-text report via `@tauri-apps/plugin-clipboard-manager`. Used by `OpenFolder.svelte` (clone/launch failures) and `ProjectView.svelte` (push/pull/launch failures) so every failure surface in the app is copy-pasteable for bug reports |
+| `src/lib/components/Settings.svelte` | Set VSCodium executable path override (for installs not on PATH) — accessible via idle-screen gear icon or directly from a `launch_vscodium` failure's ErrorPanel action |
 | `src/lib/stores/authStore.svelte.js` | Config persist (url, username, token, token_expires_at, vscodium_path) — mirrors `nodepulse-connect`'s `authStore.svelte.js` pattern, adds `isAuthenticated` expiry check since devkit has no refresh flow |
 | `src/lib/components/Login.svelte` | Host/username/password form → `login` Tauri command |
 | `src/lib/components/OpenFolder.svelte` | Drives the picker → clone → launch-VSCodium sequence once a deep-link is queued |

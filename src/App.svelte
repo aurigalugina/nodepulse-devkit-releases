@@ -6,11 +6,14 @@
   import Login from './lib/components/Login.svelte';
   import OpenFolder from './lib/components/OpenFolder.svelte';
   import ProjectView from './lib/components/ProjectView.svelte';
+  import Settings from './lib/components/Settings.svelte';
+  import { Settings2 } from 'lucide-svelte';
 
   let ready = $state(false);
   let startupDone = $state(false); // gates the UI behind the update-check screen, same pattern as nodepulse-connect
   let pendingOpen = $state(null); // { nodeId, path } parsed from a deep-link, queued until login completes
   let opened = $state(null); // { localPath, folder, nodeId } once OpenFolder finishes — Task 9 builds the real project view here
+  let showSettings = $state(false);
 
   /** Parses "nodepulse-ide://open?node=<id>&path=<folder>&host=<origin>" —
    * see NodeFileManager.svelte's openInNodePulseIDE() on the web-panel side
@@ -88,18 +91,31 @@
     <StartupCheck onDone={() => (startupDone = true)} />
   {:else if !authStore.isAuthenticated}
     <Login onLoggedIn={onLoggedIn} />
+  {:else if showSettings}
+    <Settings onClose={() => (showSettings = false)} />
   {:else if pendingOpen}
     <OpenFolder pending={pendingOpen} onDone={onOpenDone} />
   {:else if opened}
-    <ProjectView project={opened} vscodiumPath={authStore.vscodiumPath} />
+    <ProjectView project={opened} vscodiumPath={authStore.vscodiumPath} onOpenSettings={() => (showSettings = true)} />
   {:else}
-    <div class="h-full flex items-center justify-center text-center px-6">
-      <div>
-        <h1 class="text-sm font-medium text-np-text">NodePulse IDE</h1>
-        <p class="text-xs text-np-muted mt-1">
-          Signed in as {authStore.username}. Click "Open in NodePulse-IDE" on a folder
-          in NodePulse's file manager to get started.
-        </p>
+    <div class="h-full flex flex-col">
+      <div class="flex justify-end p-2">
+        <button
+          class="np-btn-ghost text-xs flex items-center gap-1.5"
+          onclick={() => (showSettings = true)}
+          title="Settings"
+        >
+          <Settings2 size={13} />
+        </button>
+      </div>
+      <div class="flex-1 flex items-center justify-center text-center px-6">
+        <div>
+          <h1 class="text-sm font-medium text-np-text">NodePulse IDE</h1>
+          <p class="text-xs text-np-muted mt-1">
+            Signed in as {authStore.username}. Click "Open in NodePulse-IDE" on a folder
+            in NodePulse's file manager to get started.
+          </p>
+        </div>
       </div>
     </div>
   {/if}

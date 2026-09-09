@@ -1,10 +1,10 @@
 <script>
   import { invoke } from '@tauri-apps/api/core';
-  import { Upload, Download, FolderCode, Loader } from 'lucide-svelte';
+  import { Upload, Download, FolderCode, Loader, Settings2 } from 'lucide-svelte';
   import ErrorPanel from './ErrorPanel.svelte';
 
   /** @type {{ localPath: string, folder: string, nodeId: string, launchError?: string }} */
-  let { project, vscodiumPath } = $props();
+  let { project, vscodiumPath, onOpenSettings } = $props();
 
   let statusLines = $state([]); // parsed porcelain lines, [{status, file}]
   let loadingStatus = $state(false);
@@ -144,9 +144,16 @@
           Node: project.nodeId
         }}
       />
-      <button class="np-btn-ghost mt-2 text-xs self-start" onclick={pullLatest} disabled={pulling}>
-        Pull latest &amp; retry
-      </button>
+      {#if resultStep === 'launch_vscodium'}
+        <button class="np-btn-ghost mt-2 text-xs self-start flex items-center gap-1.5" onclick={onOpenSettings}>
+          <Settings2 size={12} />
+          Set VSCodium path in Settings
+        </button>
+      {:else}
+        <button class="np-btn-ghost mt-2 text-xs self-start" onclick={pullLatest} disabled={pulling}>
+          Pull latest &amp; retry
+        </button>
+      {/if}
     {:else}
       <div class="text-xs p-3 rounded-lg bg-np-green-dim text-np-green">
         <p class="whitespace-pre-wrap font-mono">{resultMessage}</p>

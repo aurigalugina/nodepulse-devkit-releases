@@ -142,22 +142,73 @@ pub fn git_status_porcelain(local_path: String) -> Result<String, String> {
     run_git(&["status", "--porcelain=v1"], Some(&local_path))
 }
 
-/// Stages everything, commits (with a default message if none given), and
+/// One file's before/after content for the side-by-side diff view.
+/// `before` is the file's content as of HEAD (empty + `before_existed:
+/// false` for a newly-added file that HEAD never had); `after` is
+/// whatever's currently on disk in the working tree (empty +
+/// `after_existed: false` for a file HEAD has that's since been deleted).
+/// Mirrors the shape web-panel's `GitDiffViewer.svelte` already expects
+/// (`before`/`after`/`before_existed`/`after_existed`) — the diff render
+/// component itself (`DiffViewer.svelte`) is a straight copy of
+/// web-panel's, so keeping the data shape identical means zero changes
+/// needed to reuse it.
+#[derive(serde::Serialize)]
+pub struct GitDiffSides {
+    pub before: String,
+    pub after: String,
+    pub before_existed: bool,
+    pub after_existed: bool,
+}
+
+/// Reads one file's before(HEAD)/after(working tree) content for the
+/// Push-to-Server confirmation screen's diff view. Shells out to `git
+/// show HEAD:<file>` for "before" (empty + `before_existed: false` if
+/// HEAD doesn't have this path — i.e. a newly added file) and reads the
+/// file straight off disk for "after" (empty + `after_existed: false` if
+/// the file no longer exists there — i.e. a deleted file). Binary files
+/// are not specially detected here; CodeMirror will just render whatever
+/// comes back as text, same behavior as web-panel's existing diff viewer.
+#[tauri::command]
+pub fn git_diff(local_path: String, file: String) -> Result<GitDiffSides, String> {
+    let before_result = run_git(&["show", &format!("HEAD:{file}")], Some(&local_path));
+    let (before, before_existed) = match before_result {
+        Ok(content) => (content, true),
+        // "HEAD doesn't have this file" and "repo has no commits yet"
+        // both land here — either way, there's nothing to show as
+        // "before", which is the correct rendering for a newly added file.
+        Err(_) => (String::new(), false),
+    };
+
+    let full_path = Path::new(&local_path).join(&file);
+    let (after, after_existed) = match std::fs::read_to_string(&full_path) {
+        Ok(content) => (content, true),
+        Err(_) => (String::new(), false),
+    };
+
+    Ok(GitDiffSides { before, after, before_existed, after_existed })
+}
+
+/// Stages everything, commits with the user-supplied message, and
 /// pushes to the `nodepulse` remote's current branch — the beginner-
 /// friendly path from the design discussion, for users not yet comfortable
 /// with git directly. On a non-fast-forward rejection, returns git's own
 /// stderr message untouched so the frontend can show it and offer a
 /// "Pull latest & retry" follow-up (git_pull below) rather than silently
 /// retrying or attempting any custom conflict resolution.
+///
+/// `commit_message` is required (not `Option`, no default text) — the
+/// frontend gates the Push button on a non-empty message rather than
+/// letting this command silently substitute a generic one, per an
+/// explicit user decision to enforce writing a real commit message
+/// instead of "Update via NodePulse IDE" every time.
 #[tauri::command]
-pub fn git_commit_and_push(local_path: String, commit_message: Option<String>) -> Result<String, String> {
+pub fn git_commit_and_push(local_path: String, commit_message: String) -> Result<String, String> {
     run_git(&["add", "-A"], Some(&local_path))?;
 
-    let message = commit_message.unwrap_or_else(|| "Update via NodePulse IDE".to_string());
     // "nothing to commit" is not an error condition worth failing on — the
     // user may click Push with no changes; git exits non-zero for that, so
     // check for it explicitly rather than surfacing a confusing error.
-    match run_git(&["commit", "-m", &message], Some(&local_path)) {
+    match run_git(&["commit", "-m", &commit_message], Some(&local_path)) {
         Ok(out) => out,
         Err(e) if e.contains("nothing to commit") => {
             return Ok("Nothing to commit — already up to date.".to_string());

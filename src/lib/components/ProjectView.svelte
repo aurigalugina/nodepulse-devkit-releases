@@ -1,7 +1,8 @@
 <script>
   import { invoke } from '@tauri-apps/api/core';
-  import { Upload, Download, FolderCode, Loader, Settings2 } from 'lucide-svelte';
+  import { Upload, Download, FolderCode, Loader, Settings2, FileCode } from 'lucide-svelte';
   import ErrorPanel from './ErrorPanel.svelte';
+  import DiffViewer from './DiffViewer.svelte';
 
   /** @type {{ localPath: string, folder: string, nodeId: string, launchError?: string }} */
   let { project, vscodiumPath, onOpenSettings } = $props();
@@ -9,6 +10,10 @@
   let statusLines = $state([]); // parsed porcelain lines, [{status, file}]
   let loadingStatus = $state(false);
   let showConfirm = $state(false);
+  let selectedFile = $state(null); // which statusLines entry's diff is currently shown
+  let diffSides = $state(null); // { before, after, before_existed, after_existed } for selectedFile
+  let loadingDiff = $state(false);
+  let commitMessage = $state('');
   let pushing = $state(false);
   let pulling = $state(false);
   let resultMessage = $state('');
@@ -48,14 +53,37 @@
 
   async function openPushPreview() {
     await refreshStatus();
+    selectedFile = null;
+    diffSides = null;
+    commitMessage = '';
     showConfirm = true;
+    // Auto-select the first changed file so the diff pane isn't empty on open.
+    if (statusLines.length > 0) {
+      selectFile(statusLines[0]);
+    }
+  }
+
+  async function selectFile(line) {
+    selectedFile = line;
+    diffSides = null;
+    loadingDiff = true;
+    try {
+      diffSides = await invoke('git_diff', { localPath: project.localPath, file: line.file });
+    } catch (e) {
+      // Non-fatal — e.g. a binary file git_diff can't usefully render as
+      // text. Leave diffSides null; the pane shows a fallback message
+      // instead of a broken editor.
+      diffSides = null;
+    } finally {
+      loadingDiff = false;
+    }
   }
 
   async function confirmPush() {
     pushing = true;
     resultMessage = '';
     try {
-      const out = await invoke('git_commit_and_push', { localPath: project.localPath, commitMessage: null });
+      const out = await invoke('git_commit_and_push', { localPath: project.localPath, commitMessage });
       resultMessage = out || 'Pushed successfully.';
       resultIsError = false;
       showConfirm = false;
@@ -164,36 +192,97 @@
 
 {#if showConfirm}
   <div
-    class="fixed inset-0 bg-black/60 flex items-center justify-center z-50"
+    class="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-6"
     onclick={() => (showConfirm = false)}
     onkeydown={(e) => e.key === 'Escape' && (showConfirm = false)}
     role="presentation"
   >
     <div
-      class="bg-np-surface border border-np-border rounded-xl p-5 w-full max-w-sm"
+      class="bg-np-surface border border-np-border rounded-xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden"
       onclick={(e) => e.stopPropagation()}
       onkeydown={(e) => e.stopPropagation()}
       role="dialog"
       aria-modal="true"
       tabindex="-1"
     >
-      <h2 class="text-sm font-medium text-np-text mb-3">
-        {statusLines.length === 0 ? 'Nothing to push' : `Push ${statusLines.length} change${statusLines.length === 1 ? '' : 's'}?`}
-      </h2>
+      <div class="px-5 pt-4 pb-3 border-b border-np-border flex-shrink-0">
+        <h2 class="text-sm font-medium text-np-text">
+          {statusLines.length === 0 ? 'Nothing to push' : `Push ${statusLines.length} change${statusLines.length === 1 ? '' : 's'}?`}
+        </h2>
+      </div>
+
       {#if statusLines.length > 0}
-        <ul class="text-xs font-mono text-np-muted max-h-48 overflow-y-auto space-y-1 mb-4">
-          {#each statusLines as line}
-            <li><span class="text-np-indigo-light">{line.status}</span> {line.file}</li>
-          {/each}
-        </ul>
+        <div class="flex-1 min-h-0 flex">
+          <!-- File list — click a file to preview its diff, same pattern
+               as web-panel's Git panel Changes tab. -->
+          <ul class="w-56 flex-shrink-0 border-r border-np-border overflow-y-auto text-xs font-mono">
+            {#each statusLines as line}
+              <li>
+                <button
+                  class="w-full text-left px-3 py-2 flex items-center gap-2 hover:bg-np-elevated transition-colors {selectedFile === line ? 'bg-np-elevated' : ''}"
+                  onclick={() => selectFile(line)}
+                >
+                  <FileCode size={12} class="flex-shrink-0 text-np-subtle" />
+                  <span class="text-np-indigo-light flex-shrink-0">{line.status}</span>
+                  <span class="truncate text-np-text">{line.file}</span>
+                </button>
+              </li>
+            {/each}
+          </ul>
+
+          <!-- Diff pane -->
+          <div class="flex-1 min-w-0 min-h-0">
+            {#if loadingDiff}
+              <div class="h-full flex items-center justify-center text-xs text-np-muted">
+                <Loader size={14} class="animate-spin" />
+              </div>
+            {:else if diffSides}
+              <DiffViewer
+                before={diffSides.before}
+                after={diffSides.after}
+                beforeExisted={diffSides.before_existed}
+                afterExisted={diffSides.after_existed}
+                filename={selectedFile?.file ?? ''}
+              />
+            {:else if selectedFile}
+              <div class="h-full flex items-center justify-center text-xs text-np-muted px-6 text-center">
+                Couldn't load a text diff for this file (it may be binary).
+              </div>
+            {:else}
+              <div class="h-full flex items-center justify-center text-xs text-np-subtle">
+                Select a file to preview its changes
+              </div>
+            {/if}
+          </div>
+        </div>
       {/if}
-      <div class="flex gap-2 justify-end">
-        <button class="np-btn-ghost" onclick={() => (showConfirm = false)}>Cancel</button>
+
+      <div class="px-5 py-3 border-t border-np-border flex-shrink-0 flex flex-col gap-2">
         {#if statusLines.length > 0}
-          <button class="np-btn-primary" onclick={confirmPush} disabled={pushing}>
-            {pushing ? 'Pushing…' : 'Confirm Push'}
-          </button>
+          <!-- Commit message is required — the Push button stays disabled
+               until something is typed, per an explicit user decision to
+               enforce writing a real message instead of a generic
+               auto-filled one every time. -->
+          <input
+            type="text"
+            bind:value={commitMessage}
+            placeholder="Describe what changed…"
+            class="np-input text-xs"
+            maxlength="200"
+          />
         {/if}
+        <div class="flex gap-2 justify-end">
+          <button class="np-btn-ghost" onclick={() => (showConfirm = false)}>Cancel</button>
+          {#if statusLines.length > 0}
+            <button
+              class="np-btn-primary"
+              onclick={confirmPush}
+              disabled={pushing || commitMessage.trim().length === 0}
+            >
+              {pushing ? 'Pushing…' : 'Confirm Push'}
+            </button>
+          {/if}
+        </div>
       </div>
     </div>
   </div>

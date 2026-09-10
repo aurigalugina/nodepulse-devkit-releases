@@ -1,6 +1,6 @@
 mod commands;
 
-use commands::git::{git_clone, git_commit_and_push, git_pull, git_status_porcelain};
+use commands::git::{git_clone, git_commit_and_push, git_diff, git_pull, git_status_porcelain};
 use commands::nodepulse::login;
 use commands::storage::{clear_auth_token, read_config, write_config};
 use commands::vscodium::launch_vscodium;
@@ -32,6 +32,7 @@ pub fn run() {
             // Git
             git_clone,
             git_status_porcelain,
+            git_diff,
             git_commit_and_push,
             git_pull,
             // VSCodium

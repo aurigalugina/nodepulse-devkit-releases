@@ -208,6 +208,33 @@ an explicit override to `launch_vscodium` on every subsequent launch.
 Leaving it empty falls back to `codium` on PATH (the default, works for
 most installs).
 
+## Push to Server: Side-by-Side Diff + Required Commit Message (v0.1.7)
+
+The original Push confirmation was a flat file list with no diff and a
+silently-substituted "Update via NodePulse IDE" commit message on every
+push — the user compared this unfavorably to GitHub/git's real commit
+flow and asked for both a real diff and a required commit message.
+
+- **`DiffViewer.svelte`** is a direct copy of web-panel's
+  `GitDiffViewer.svelte` (same `@codemirror/merge`-based `MergeView`,
+  same before/after/existed prop shape) — chosen deliberately so the two
+  apps' diff rendering never drifts apart, rather than building a second
+  implementation. `git_diff(local_path, file)` (new Tauri command in
+  `git.rs`) supplies the data: `before` = `git show HEAD:<file>` (empty +
+  `before_existed: false` for a newly-added file), `after` = the file's
+  current on-disk content (empty + `after_existed: false` for a deleted
+  file).
+- Push confirmation is now a full-height modal: a clickable file list on
+  the left (same status-line data as before), a live diff pane on the
+  right that loads on file click.
+- **Commit message is a required text field**, not optional/auto-filled
+  — `git_commit_and_push`'s `commit_message` parameter changed from
+  `Option<String>` (with a hardcoded fallback) to a plain required
+  `String`; the frontend disables the Push button until the field is
+  non-empty. This was an explicit user decision, not a default: they
+  wanted the habit of writing a real commit message enforced rather than
+  making it easy to skip.
+
 ## Reopening the Same Folder (v0.1.6)
 
 Every "Open in NodePulse-IDE" click always shows the folder-picker and
@@ -243,7 +270,7 @@ handled as an ordinary filesystem path with no special WSL code.
 | `src/App.svelte` | Root — startup-update gate, deep-link event listener, auth/pending-open/opened state routing |
 | `src/lib/components/StartupCheck.svelte` | Blocking update-check screen shown before login/deep-link handling (same pattern as `nodepulse-connect`'s `StartupCheck.svelte`) — "Update Now" downloads+installs+relaunches via `@tauri-apps/plugin-updater` |
 | `src/lib/components/ErrorPanel.svelte` | Shared error display — title + contextual key/value pairs (step, node, folder) + raw error text + "Copy" button that builds one self-contained plain-text report via `@tauri-apps/plugin-clipboard-manager`. Used by `OpenFolder.svelte` (clone/launch failures) and `ProjectView.svelte` (push/pull/launch failures) so every failure surface in the app is copy-pasteable for bug reports |
-| `src/lib/components/Settings.svelte` | Set VSCodium executable path override (for installs not on PATH) — accessible via idle-screen gear icon or directly from a `launch_vscodium` failure's ErrorPanel action |
+| `src/lib/components/DiffViewer.svelte` | Side-by-side (`@codemirror/merge`) diff pane for the Push-to-Server confirm modal — direct copy of web-panel's `GitDiffViewer.svelte` (same package, same before/after/existed props) so the two apps' diff rendering stays in sync |
 | `src/lib/stores/authStore.svelte.js` | Config persist (url, username, token, token_expires_at, vscodium_path) — mirrors `nodepulse-connect`'s `authStore.svelte.js` pattern, adds `isAuthenticated` expiry check since devkit has no refresh flow |
 | `src/lib/components/Login.svelte` | Host/username/password form → `login` Tauri command |
 | `src/lib/components/OpenFolder.svelte` | Drives the picker → clone → launch-VSCodium sequence once a deep-link is queued |
